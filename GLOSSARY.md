@@ -24,7 +24,9 @@
 | 工作策略层 | 输出分工与判断规则；只在工作态注入，闲聊回合由 hooks 把对应 section 清空。 |
 | 语体锚（style anchor） | 每轮贴进注入块的 2 条真实 assistant 原话，取自语体样本库；不是规则，不是记忆。 |
 | 语体样本（style example） | 被主人夸过/嫌过的原始回复句，存在 style_examples 表；同一句重复出现只加权。夸的进锚，嫌的只留作审计。 |
-| 注入快照 | 宿主每轮追加的 runtime-context 消息；旧的会堆在历史里，需要清理到只剩最新一份。 |
+| 注入快照 | 宿主每轮追加的 runtime-context 消息。插件删除不了历史里的旧快照（宿主没开这个口），所以改成「让文本尽量不变」：宿主靠整串文本比较去重，文本不变就不追加新的一条。 |
+| 画像槽（profile slot） | 常驻的 ≤200 字「关于主人」，由 topMemories 按固定顺序拼成；同一批记忆渲染结果不变，事件型检索只补这一轮真要用的几条。 |
+| 遗忘层（forgetting） | 按「多久没被用到」判：14 天降一档 importance（写 decayed_at，同一段沉默只降一次），30 天归档（source=user-explicit 只降不归档）。不靠置信度慢慢磨。 |
 | 情绪（emotion） | soul 里的一个全局值，`valence`（-1~1）+ `label`（轻松/开心/兴奋/平静/低落/烦躁/闷/生气）+ 一句原因。每轮注入一行。 |
 | 情绪衰减（emotion decay） | 正向随时间回落到「轻松」；负向在沉默里慢慢加深（有下限）。 |
 | 闹脾气档位（mood tier） | knock 只看三档 `normal / glum / angry`，由 soul 的 valence 换算，不单独存。 |
