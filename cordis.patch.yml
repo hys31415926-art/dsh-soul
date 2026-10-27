@@ -1,0 +1,13 @@
+# dsh-soul 的挂载入口：profile 的 package.json 里 dsh.bundle.patch 指向本文件。
+# 顶层必须是 YAML 数组；insert 是追加且不去重——同一个 id 挂两次会变成两个实例。
+- insert:
+    - id: dsh-soul
+      name: 'dsh-soul'
+      # 常用配置（默认值即可，按需取消注释）：
+      # config:
+      #   dbPath: ''            # 记忆库路径；留空 = <DSH_HOME>/dsh-soul/soul.db
+      #   injectBudget: 2000    # 每轮注入块硬上限（字符）
+      #   personaBudget: 6000   # 三份人格文本的总预算（字符）
+      #   memoryInjectCount: 8  # 每轮最多注入几条记忆
+      #   curationMinutes: 60   # 后台整理间隔（分钟）
+      #   logToFile: true
