@@ -92,3 +92,16 @@ test('提示词写进了行为约束，且没有把用户的例子变成「禁�
   const memoryPolicy = readPrompt('memory-policy.md');
   assert.ok(memoryPolicy.includes('工程要求'));
 });
+
+test('L1 身份层瘦身：工作策略拆到独立文件，闲聊回合不出现', () => {
+  const persona = readPrompt('persona.md');
+  const work = readPrompt('work-policy.md');
+  assert.ok(persona.includes('小鲸鱼女仆娘'));
+  assert.ok(!persona.includes('输出分工'), 'persona.md 不该再带输出分工');
+  assert.ok(!persona.includes('判断规则'), 'persona.md 不该再带判断规则');
+  assert.ok(!persona.includes('subagent'), 'persona.md 不该再带工作流转');
+  assert.ok(work.includes('输出分工'));
+  assert.ok(work.includes('判断规则'));
+  assert.ok(work.includes('subagent'));
+  assert.ok(persona.replace(/\s/g, '').length <= 500, 'L1 身份层应控制在 500 字以内');
+});
