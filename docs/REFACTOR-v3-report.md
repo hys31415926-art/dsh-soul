@@ -1,5 +1,7 @@
 # dsh-soul v3 修复报告：四条链路与真实库验证
 
+> 历史文档：记录当时那一轮重构，内容不代表当前版本。当前版本见 `README.md` 的「版本」一节与 `docs/CHANGELOG.md`。
+
 日期：2026-10-28
 源码：`C:\Users\HP\dsh-plugins\dsh-soul`
 真实库：`C:\Users\HP\.dsh\dsh-soul\soul.db`
