@@ -340,7 +340,7 @@ test('extraction：关闭抽取时不调用模型、不经程序日志', async (
 test('schema：v4 迁移幂等，旧库可打开并带 evidence/journal/judgments 表', (t) => {
   const { store, dir } = makeTempStore(t);
   const version = store.db.prepare('PRAGMA user_version').get();
-  assert.equal(Number(version.user_version), 9);
+  assert.equal(Number(version.user_version), 10);
   const tables = store.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((row) => row.name);
   for (const name of ['memory_evidence', 'project_journal', 'relation_history', 'judgments']) {
     assert.ok(tables.includes(name), `应有 ${name} 表`);
@@ -348,7 +348,7 @@ test('schema：v4 迁移幂等，旧库可打开并带 evidence/journal/judgment
   store.close();
   const reopened = openStore(join(dir, 'soul.db'));
   t.after(() => { try { reopened.close(); } catch { /* closed */ } });
-  assert.equal(Number(reopened.db.prepare('PRAGMA user_version').get().user_version), 9);
+  assert.equal(Number(reopened.db.prepare('PRAGMA user_version').get().user_version), 10);
   reopened.close(); // 先放句柄，makeTempStore 的清理才能删掉目录（Windows）
 });
 

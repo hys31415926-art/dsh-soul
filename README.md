@@ -78,8 +78,33 @@ v1.2 加了两件让记忆「像真的记得」的事：
 | `inject` | `true` | 关掉 = 完全不注入背景 |
 | `capture` | `true` | 关掉 = 不记录用户消息 |
 | `memoryExtraction` | `llm` | 设 `off` = 只走正则与显式写入 |
+| `extractMaxCallsPerHour` | `12` | 语义抽取每小时最多打几次模型（超了排队，不丢） |
+| `extractMaxAttempts` | `5` | 同一回合最多试几次，到了降为每天一次 |
+| `extractRecoverBatch` | `3` | 每次补做遗留回合的上限 |
+| `extractRecoverCooldownMs` | `600000` | 两次补做之间的冷却（10 分钟） |
 | `curationMinutes` | `60` | 后台整理间隔 |
 | `logToFile` | `true` | 同时写 soul.log |
+
+## 记忆注入的三级（v1.4）
+
+注入块里的记忆不再是一个口气，按「能不能说出口」分三段：
+
+| 段 | 条件 | 用法 |
+| --- | --- | --- |
+| 【可以自然提起】 | 事实/项目类，置信度 ≥ 0.55，120 天内 | 相关时可以直接提 |
+| 【只影响语气，不要复述内容】 | 偏好/交互/关系类 | 只调语气，别把内容念出来 |
+| 【拿不准／较旧，别当事实说】 | 置信度 < 0.55，或超过 120 天没更新 | 只带不确定感 |
+
+分割线在 `lib/memory/retrieval.js` 的 `usageOf()`；渲染在 `lib/memory/render.js` 的 `renderInjectedMemories()`。
+
+## 语义抽取的预算与退避（v1.4）
+
+以前失败回合不标 `extracted_at`，下一个 `llm.onRoute` 又把它捞回来重试，没有上限——启动阶段能刷上百条「补做 1 个遗留回合」并和用户第一条消息抢同一个模型路由。现在：
+
+- 失败写 `turns.extract_attempts / next_extract_at`，按阶梯退避（30s → 2min → 10min → 30min → 1h），第 `extractMaxAttempts` 次后降为每天一次；
+- 补做带冷却（`extractRecoverCooldownMs`，默认 10 分钟）与批量上限（`extractRecoverBatch`，默认 3）；
+- 每小时调用数上限（`extractMaxCallsPerHour`，默认 12），超了队列挂起、一分钟后再来，不丢活也不空转；
+- 成功标记会清空退避；`/soul reextract` 重置时也一并清退避，避免空转。
 
 ## 结构
 
