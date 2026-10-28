@@ -2,6 +2,18 @@
 
 版本号以 `package.json` 为准。这里只记「行为变了」的部分，纯重构不记。
 
+## 1.6.0
+
+**记忆唤醒链路可观测**（schema 11，新增 `wake_log` 表）
+
+- 每轮 `turn/end` 落一行元数据：会话/回合、检索模式与路径、缓存命中、候选池与注入的 ID、被淘汰的 ID 与原因码、段落字数、预算用量、是否渲染、降级标记、耗时。**不存正文、不存提示词、不存 token**。
+- `wake_log` 独立生命周期：`curate()` 里保留 30 天或 5000 行（先到者），不新开定时器。
+- `selectMemories()` 新增返回 `considered` / `excluded`（每条 `{id, reason}`，上限 60）/ `overBudgetIds`；`filtered` 新增 `typeQuota`。淘汰原因从此分得清：没找到 / 没过状态类型窗口 / 同类配额 / 单条预算 / 渲染预算 / 整段移除 / 硬长度上限。
+- `renderContextBlock()` 新增可选 `input.report` 收集器（返回值仍是字符串，老调用方不用改）与 `input.dryRun`（预览不写 `meta['retrieval.last']`、不记锚点使用）。报告里 `rendered` 是布尔，`chars` 才是长度。
+- `/soul why` 改成只答历史（读 `wake_log`，没有再退回 `meta['retrieval.last']`）；另开 `/soul plan [这句话]` 做纯函数预算预览；`/soul diagnose [turn:<id>|memory:#<id>] [--text]` 看单轮或单条记忆的链路；`/soul check` 只读一致性检查（连接 / schema / 必要表与索引 / FTS5 / 孤立向量 / 改口自洽 / 唤醒日志），只报告不修复。
+- `/soul status` 多两行：唤醒日志行数与最近一次（路径、降级）。
+- 测试 218 → 231：新增 `tests/wake-log.test.js`（落库读回、淘汰原因、dryRun 不写观测、一致性检查失败路径、裁剪上限、hooks 收尾写一行、诊断/预览/检查命令）。
+
 ## 1.5.1
 
 - 修掉一个长期静默降级：Windows 上 `sharp` 的预编译二进制坏了（`.node` 加载报 `ERR_DLOPEN_FAILED: The specified module could not be found`），`transformers.js` 一 import 就失败，于是向量模型永远加载不起来、语义检索长期退回字面检索，只在 `soul.log` 里刷一行 warn。`sharp` 现在是显式依赖（`^0.34.5`），README 补了排查与修法。

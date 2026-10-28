@@ -10,7 +10,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { makeTempStore, testConfig } from './helpers.js';
-import { openStore } from '../lib/memory/store.js';
+import { openStore, SCHEMA_VERSION } from '../lib/memory/store.js';
 import { addEvidence, listEvidence, evidenceCounts, pruneEvidence } from '../lib/memory/evidence.js';
 import {
   recordJournal,
@@ -340,7 +340,7 @@ test('extraction：关闭抽取时不调用模型、不经程序日志', async (
 test('schema：v4 迁移幂等，旧库可打开并带 evidence/journal/judgments 表', (t) => {
   const { store, dir } = makeTempStore(t);
   const version = store.db.prepare('PRAGMA user_version').get();
-  assert.equal(Number(version.user_version), 10);
+  assert.equal(Number(version.user_version), SCHEMA_VERSION);
   const tables = store.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((row) => row.name);
   for (const name of ['memory_evidence', 'project_journal', 'relation_history', 'judgments']) {
     assert.ok(tables.includes(name), `应有 ${name} 表`);
@@ -348,7 +348,7 @@ test('schema：v4 迁移幂等，旧库可打开并带 evidence/journal/judgment
   store.close();
   const reopened = openStore(join(dir, 'soul.db'));
   t.after(() => { try { reopened.close(); } catch { /* closed */ } });
-  assert.equal(Number(reopened.db.prepare('PRAGMA user_version').get().user_version), 10);
+  assert.equal(Number(reopened.db.prepare('PRAGMA user_version').get().user_version), SCHEMA_VERSION);
   reopened.close(); // 先放句柄，makeTempStore 的清理才能删掉目录（Windows）
 });
 

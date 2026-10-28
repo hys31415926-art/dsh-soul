@@ -6,10 +6,11 @@ DSH（DeepSeek Harness）的长期记忆 + 人设插件。合并了早期 dsh-co
 
 ## 版本
 
-当前版本 **1.5.1**（以 `package.json` 为准；详细差异见 `docs/CHANGELOG.md`）。
+当前版本 **1.6.0**（以 `package.json` 为准；详细差异见 `docs/CHANGELOG.md`）。
 
 | 版本 | 主要变化 |
 | --- | --- |
+| `1.6.0` | 记忆唤醒链路可观测：每轮落一行 `wake_log`（只存 ID/原因码/长度/预算，不存正文）；淘汰原因可查到具体 ID；`/soul diagnose`、`/soul plan`、`/soul check`；`/soul why` 只答历史 |
 | `1.5.1` | `/soul status` 直接显示语义检索是「已加载 / 懒加载 / 降级（原因）」并给出已建索引条数；`sharp` 改为显式依赖（修掉 `Could not load the "sharp" module` 导致的长期静默降级） |
 | `1.5.0` | 检索路由（默认只按当前消息检索）；单值属性改口 / 多值并存；睡眠维护（近重复合并、低价值聚合、六条护栏）；检索缓存与可观测（`/soul why`、`/soul sleep`） |
 | `1.4.0` | 语义抽取预算与失败退避（不再无限重试）；注入三级分流（可以自然提起／只影响语气／拿不准） |
@@ -63,7 +64,7 @@ v1.2 加了两件让记忆「像真的记得」的事：
 
 ## 命令（用户可用）
 
-`/soul` 后接：`status`、`memories`、`search`、`remember`、`forget`、`candidates`、`approve`、`reject`、`backup`、`today`、`journal`、`projects`、`project`、`switch`、`add`、`done`、`review`、`mood`、`config`、`export`、`rules`、`reextract`、`replay`、`sleep`、`why`、`help`。
+`/soul` 后接：`status`、`memories`、`search`、`remember`、`forget`、`candidates`、`approve`、`reject`、`backup`、`today`、`journal`、`projects`、`project`、`switch`、`add`、`done`、`review`、`mood`、`config`、`export`、`rules`、`reextract`、`replay`、`sleep`、`why`、`plan`、`diagnose`、`check`、`help`。
 
 ## 技能
 
@@ -153,13 +154,17 @@ v1.2 加了两件让记忆「像真的记得」的事：
 - **护栏**：`source = user-explicit`、`importance ≥ 0.8`、`hits ≥ 5`、关系/项目类、标签含 self/核心/身份/约定/家人/纪念、7 天内更新过 —— 一律不衰减、不归档；
 - 结果写 `meta['curation.report']`，`/soul sleep` 会把条数打出来。
 
-## 看得见「为什么注入这条」（v1.5）
+## 看得见「为什么注入这条」（v1.5 → v1.6）
 
-- 每轮检索结果带 `path`（literal / popular / vector / none）、`cache`（hit / miss）、`filtered`（wrongStatus / wrongType / tooOld / duplicate / overBudget 计数）；
+- 每轮检索结果带 `path`（literal / popular / vector / none）、`cache`（hit / miss）、`filtered`（wrongStatus / wrongType / tooOld / duplicate / typeQuota / overBudget 计数）；
 - 注入发生时会写一条 debug 日志，并把摘要存进 `meta['retrieval.last']`；
-- `/soul why [这句话]` 直接看这一轮会怎么检索：模式、检索词、时间窗口、类型白名单、是否含旧值，以及最近一次真实注入的摘要；
+- `/soul why` 只看历史：这次装配真实发生了什么（路径、缓存、候选、注入、淘汰、预算、降级）；想看「下一句会怎么检索」用 `/soul plan [这句话]`（纯函数预览，不落库）；
 - 检索缓存 TTL 60 秒，key 里带记忆库指纹（条数 + 最大 `updated_at`），**命中后仍重读记录并重新判定可见性**，库里改过的记忆不会凭旧快照注入。
 
+- v1.6 起每轮 `turn/end` 落一行 `wake_log`（只存 ID、原因码、长度、预算，不存正文）；`/soul diagnose [turn:<id>|memory:#<id>]` 能按回合或按记忆回溯整条链路，`/soul check` 做只读一致性检查（不修复）；
+- 淘汰原因分六类且都能指到 ID：没找到（`considered=0`）/ 没过筛选（`wrongStatus`、`wrongType`、`tooOld`、`duplicate`）/ 同类配额（`typeQuota`）/ 单条预算（`overBudget`）/ 渲染预算（`renderBudget`）/ 整段移除与硬长度上限（`removedSections`、`hardCap`）；
+- `wake_log` 保留 30 天或 5000 行（先到者），挂在 `curate()` 里裁，不新开定时器；
+- 边界：程序只证明「已渲染并交给宿主」，不能证明模型真的用了它。
 
 ## 结构
 

@@ -6,7 +6,7 @@ import { SCHEMA_VERSION } from '../lib/memory/store.js';
 
 test('判断：记录后可读回，默认 open，空 guess 拒绝', (t) => {
   const { store } = makeTempStore(t);
-  assert.equal(SCHEMA_VERSION, 10);
+  assert.ok(SCHEMA_VERSION >= 10, 'schema 版本应不低于 v10（v11 起多 wake_log）');
   const id = store.recordJudgment({ sessionId: 's-1', kind: 'read', subject: '他在问进度', guess: '他其实想被安慰' });
   const item = store.getJudgment(id);
   assert.equal(item.guess, '他其实想被安慰');

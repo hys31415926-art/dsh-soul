@@ -46,3 +46,8 @@
 | 近况汇总（consolidation） | 把一组 `importance ≤ 0.35` 的琐碎记忆压成一条摘要，原文归档，比逐条删更留得住东西。 |
 | 检索缓存（retrieval cache） | 60 秒 TTL，key 含记忆库指纹与检索参数；命中后仍重读记录并重判可见性，不信任旧快照。 |
 | 检索路径（retrieval path） | 这一轮记忆是怎么来的：`literal`（字面命中）/ `popular`（没检索词，按热度）/ `vector`（语义）/ `none`。`/soul why` 可见。 |
+| 唤醒日志（wake_log） | 每轮 `turn/end` 落的一行链路元数据：会话/回合、检索路径与缓存、候选与注入的 ID、淘汰的 ID 与原因码、段落字数、预算、是否渲染、降级、耗时。只存 ID 与长度，不存正文、提示词、token。 |
+| 淘汰原因（exclusion reason） | 一条记忆没进注入块的原因码：`wrongStatus` / `wrongType` / `tooOld` / `duplicate` / `typeQuota`（同类最多 2 条）/ `overBudget`（单条预算）/ `renderBudget`（渲染时被裁）/ `removedSections`（整段移除）/ `hardCap`（撞硬上限）。`/soul diagnose` 可查。 |
+| 候选池（considered） | 这一轮实际进入排序的记忆条数。`considered=0` 且 `path=none` 才是真「没找到」；有候选却全被淘汰则要按原因码解释。 |
+| 一致性检查（integrity check） | `/soul check` 与 `store.integrityCheck()`：开库、schema、必要表与索引、FTS5、孤立向量、改口自洽、唤醒日志。只读，只报告，不修复。 |
+| 预算预览（plan） | `/soul plan [这句话]`：`renderContextBlock()` 的 `dryRun` 模式，纯函数重算不落库、不写 `retrieval.last`、不记锚点；用来回答「下一句会怎么检索」。 |

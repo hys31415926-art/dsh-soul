@@ -44,12 +44,12 @@ function makeController(t, overrides = {}, llm = fakeLlm()) {
   return { store, config, controller, llm };
 }
 
-test('迁移：turns 增加退避列，schema 版本升到 10', (t) => {
+test('迁移：turns 增加退避列，schema 版本随之升高', (t) => {
   const { store } = makeTempStore(t);
   const names = turnColumns(store);
   assert.ok(names.includes('extract_attempts'), 'turns 应有 extract_attempts');
   assert.ok(names.includes('next_extract_at'), 'turns 应有 next_extract_at');
-  assert.equal(SCHEMA_VERSION, 10);
+  assert.ok(SCHEMA_VERSION >= 10, 'schema 版本应不低于 v10');
 });
 
 test('退避：失败点之前不回收，到了才回来', (t) => {
