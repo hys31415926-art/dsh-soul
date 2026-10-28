@@ -49,7 +49,7 @@ v1.2 加了两件让记忆「像真的记得」的事：
 
 ## 命令（用户可用）
 
-`/soul` 后接：`status`、`memories`、`search`、`remember`、`forget`、`candidates`、`approve`、`reject`、`backup`、`today`、`journal`、`projects`、`project`、`switch`、`add`、`done`、`review`、`mood`、`config`、`export`、`rules`、`reextract`、`replay`、`help`。
+`/soul` 后接：`status`、`memories`、`search`、`remember`、`forget`、`candidates`、`approve`、`reject`、`backup`、`today`、`journal`、`projects`、`project`、`switch`、`add`、`done`、`review`、`mood`、`config`、`export`、`rules`、`reextract`、`replay`、`sleep`、`why`、`help`。
 
 ## 技能
 
@@ -75,6 +75,8 @@ v1.2 加了两件让记忆「像真的记得」的事：
 | `embeddingRetrieval` | `true` | 是否用本地向量做语义检索（关掉 = 纯字面） |
 | `embeddingModel` | `Xenova/bge-small-zh-v1.5` | 向量模型（换模型要重建索引） |
 | `embeddingThreshold` | `0.5` | 语义召回余弦阈值（太低会召回反义句） |
+| `queryMode` | `current_message` | 检索路由：`current_message` 只按当前消息 / `guarded_companion` 有线索且有话题才扩展 / `companion_augmented` 老行为 |
+| `statusWindowDays` | `7` | 问「在干嘛／吃了吗」这类眼下状态时，只翻最近几天的记忆 |
 | `inject` | `true` | 关掉 = 完全不注入背景 |
 | `capture` | `true` | 关掉 = 不记录用户消息 |
 | `memoryExtraction` | `llm` | 设 `off` = 只走正则与显式写入 |
@@ -94,6 +96,7 @@ v1.2 加了两件让记忆「像真的记得」的事：
 | 【可以自然提起】 | 事实/项目类，置信度 ≥ 0.55，120 天内 | 相关时可以直接提 |
 | 【只影响语气，不要复述内容】 | 偏好/交互/关系类 | 只调语气，别把内容念出来 |
 | 【拿不准／较旧，别当事实说】 | 置信度 < 0.55，或超过 120 天没更新 | 只带不确定感 |
+| 【以前的情况：只能当「以前」说】 | 被新版本取代的旧值（住址/职业/生日等单值属性改口） | 只在被问到过去时提，且要带时间 |
 
 分割线在 `lib/memory/retrieval.js` 的 `usageOf()`；渲染在 `lib/memory/render.js` 的 `renderInjectedMemories()`。
 
@@ -105,6 +108,44 @@ v1.2 加了两件让记忆「像真的记得」的事：
 - 补做带冷却（`extractRecoverCooldownMs`，默认 10 分钟）与批量上限（`extractRecoverBatch`，默认 3）；
 - 每小时调用数上限（`extractMaxCallsPerHour`，默认 12），超了队列挂起、一分钟后再来，不丢活也不空转；
 - 成功标记会清空退避；`/soul reextract` 重置时也一并清退避，避免空转。
+
+## 检索路由（v1.5）
+
+以前的检索词是「当前消息 + 未决问题」硬拼，最容易答非所问。现在先决定**这一轮怎么检索**，再检索：
+
+| 模式 | 行为 |
+| --- | --- |
+| `current_message`（默认） | 只用当前这条消息做检索词 |
+| `guarded_companion` | 有陪伴线索（累/晚安/想你/心情…）**且**当前话题有实质内容时才扩展，否则仍按当前消息 |
+| `companion_augmented` | 老行为：总把未决问题拼进来（不推荐） |
+
+另外两条窗口规则在 `lib/memory/retrieval.js` 的 `planRetrieval()` 里：问「在干嘛／吃了吗」这类**眼下状态**只看最近 `statusWindowDays` 天且只允许画像/事实/情景；问「以前／之前」时把被取代的旧值也放进候选。
+
+## 单值改口与多值并存（v1.5）
+
+改口和偏好是两回事，不能一刀切：
+
+- **单值属性**（住址、职业、公司、学校、生日、手机、邮箱、身高体重、家乡、星座）：写入新值时把旧值标成 `superseded` 并 `superseded_by` 指回新值，旧值保留 —— 这样「你以前住哪儿」还答得出来；
+- **多值属性**（习惯、喜欢/讨厌、约定、打算）：新旧并存，绝不互相取代；
+- 判断在 `lib/memory/attributes.js`（`attributeSlot()` / `shouldSupersede()`），写入时由 `store.applyAttributeRules()` 执行；
+- 用户明确要求记住的旧值不会被一条低置信度的新说法顶掉。
+
+## 睡眠维护（v1.5）
+
+`/soul sleep` 手动跑一次，平时由 `curationMinutes`（默认 60 分钟）后台跑。顺序是：裁剪原始回合 → 近重复合并 → 低价值聚合 → 衰减 → 归档。
+
+- **近重复合并**：字符 bigram 相似度 ≥ 0.8 的两条同类型记忆只留被用得多的那条；
+- **低价值聚合**：一组 `importance ≤ 0.35` 的琐碎记忆（≥3 条）压成一条「近况汇总」，原文归档 —— 比逐条删更留得住东西；
+- **护栏**：`source = user-explicit`、`importance ≥ 0.8`、`hits ≥ 5`、关系/项目类、标签含 self/核心/身份/约定/家人/纪念、7 天内更新过 —— 一律不衰减、不归档；
+- 结果写 `meta['curation.report']`，`/soul sleep` 会把条数打出来。
+
+## 看得见「为什么注入这条」（v1.5）
+
+- 每轮检索结果带 `path`（literal / popular / vector / none）、`cache`（hit / miss）、`filtered`（wrongStatus / wrongType / tooOld / duplicate / overBudget 计数）；
+- 注入发生时会写一条 debug 日志，并把摘要存进 `meta['retrieval.last']`；
+- `/soul why [这句话]` 直接看这一轮会怎么检索：模式、检索词、时间窗口、类型白名单、是否含旧值，以及最近一次真实注入的摘要；
+- 检索缓存 TTL 60 秒，key 里带记忆库指纹（条数 + 最大 `updated_at`），**命中后仍重读记录并重新判定可见性**，库里改过的记忆不会凭旧快照注入。
+
 
 ## 结构
 

@@ -38,3 +38,11 @@
 | 想说话强度（pressure） | knock 的类 PID 输出，0~1。P 看当前空窗、I 看最近一天累计冷落、D 看趋势，再乘情绪系数。 |
 | 状态机（knock state machine） | 待机 → 攒 → 可发 → 已发 → 冷却。五态，落盘在 `~/.dsh/dsh-knock/state.json`。 |
 | 主动消息（knock message） | knock 用宿主模型生成、经 QQ 发出、并写回 soul 历史的一条 assistant 回合。 |
+| 检索路由（retrieval routing） | 先决定这一轮怎么检索再检索：`current_message`（默认，只用当前消息）/ `guarded_companion`（有陪伴线索且有话题才扩展）/ `companion_augmented`（老行为）。实现在 `planRetrieval()`。 |
+| 状态窗口（status window） | 问「在干嘛／吃了吗」这类眼下状态时，只翻最近 `statusWindowDays` 天，且只允许画像/事实/情景三类记忆进来。 |
+| 单值改口（supersede） | 住址/职业/生日这类属性只有一个当前值：写入新值时旧值标 `superseded` 并 `superseded_by` 指回新值，旧值保留以支持「以前」的提问。 |
+| 多值并存（coexist） | 习惯/喜欢/约定这类属性可以同时成立，新旧绝不互相取代。 |
+| 睡眠维护（sleep maintenance） | 一次整理：裁剪原始回合 → 近重复合并 → 低价值聚合 → 衰减 → 归档。护栏（用户交代的、用得多的、关系/项目、7 天内更新过的）不衰减不归档。`/soul sleep` 手动触发。 |
+| 近况汇总（consolidation） | 把一组 `importance ≤ 0.35` 的琐碎记忆压成一条摘要，原文归档，比逐条删更留得住东西。 |
+| 检索缓存（retrieval cache） | 60 秒 TTL，key 含记忆库指纹与检索参数；命中后仍重读记录并重判可见性，不信任旧快照。 |
+| 检索路径（retrieval path） | 这一轮记忆是怎么来的：`literal`（字面命中）/ `popular`（没检索词，按热度）/ `vector`（语义）/ `none`。`/soul why` 可见。 |
