@@ -13,7 +13,7 @@
  *   空格黏连 每百字出现多少次「汉字 空格 汉字」（用空格代替标点的量）
  *   清单   每段平均几个项目符号/标题（工作腔的直接指纹）
  *   语气词 每百字几个呀嘛啦呢（人格还在不在）
- *   称呼   每百字几个「主人」
+ *   称呼   每百字几个「前辈」（历史 主人 计数仍保留在原始 metrics JSON 的 masterPer100）
  *   注入   注入块的平均字数与去重指纹数（看每轮是否在反复变）
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
@@ -61,7 +61,7 @@ function summarize(list) {
     glue: +num(avg((r) => r.out.gluePer100)),
     bullets: +num(avg((r) => r.out.bullets + r.out.headers)),
     part: +num(avg((r) => r.out.partPer100), 2),
-    master: +num(avg((r) => r.out.masterPer100), 2),
+    senior: +num(avg((r) => r.out.seniorPer100), 2),
     injChars: inj.length ? Math.round(inj.reduce((a, r) => a + r.inj.chars, 0) / inj.length) : 0,
     injHashes: new Set(inj.map((r) => r.inj.hash)).size,
   };
@@ -75,10 +75,10 @@ for (const r of rows) {
 }
 
 console.log('数据：' + metricsDir + '（' + rows.length + ' 条' + (weekOnly ? '，最近 7 天' : '') + '）\n');
-console.log(pad('分组', 28) + pad('条数', 6) + pad('字数', 6) + pad('句长', 6) + pad('无标点%', 8) + pad('空格黏连', 9) + pad('清单行', 7) + pad('语气词', 7) + pad('称呼', 6) + pad('注入字', 7) + '注入版本数');
+console.log(pad('分组', 28) + pad('条数', 6) + pad('字数', 6) + pad('句长', 6) + pad('无标点%', 8) + pad('空格黏连', 9) + pad('清单行', 7) + pad('语气词', 7) + pad('前辈', 6) + pad('注入字', 7) + '注入版本数');
 for (const [k, list] of [...groups.entries()].sort()) {
   const s = summarize(list);
-  console.log(pad(k, 28) + pad(s.n, 6) + pad(s.chars, 6) + pad(s.sent, 6) + pad(s.noPunct, 8) + pad(s.glue, 9) + pad(s.bullets, 7) + pad(s.part, 7) + pad(s.master, 6) + pad(s.injChars, 7) + s.injHashes);
+  console.log(pad(k, 28) + pad(s.n, 6) + pad(s.chars, 6) + pad(s.sent, 6) + pad(s.noPunct, 8) + pad(s.glue, 9) + pad(s.bullets, 7) + pad(s.part, 7) + pad(s.senior, 6) + pad(s.injChars, 7) + s.injHashes);
 }
 
 const dupes = rows.length ? (rows.filter((r) => r.inj).length - new Set(rows.filter((r) => r.inj).map((r) => r.inj.hash)).size) : 0;

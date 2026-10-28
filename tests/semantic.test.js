@@ -27,6 +27,7 @@ import {
   recordTurnWorkJournal,
 } from '../lib/memory/semantic.js';
 import { createExtractionController } from '../lib/memory/extraction.js';
+import { listStyleExamples } from '../lib/memory/style-examples.js';
 
 function makeProject(store, name = '测试项目') {
   const project = store.upsertProject({ name, goal: '验证语义管道', stage: '开发中', source: 'user' });
@@ -247,7 +248,7 @@ test('extraction：LLM 成功时把语义结果落库并标记回合已抽取', 
   assert.equal(store.isTurnExtracted('s-ext', 1), true);
 });
 
-test('extraction：LLM 失败时降级——不写记忆，只记程序侧工作日志', async (t) => {
+test('extraction：LLM 失败时降级——不写记忆、不标已抽取，只记程序侧工作日志', async (t) => {
   const { store } = makeTempStore(t);
   const pid = makeProject(store);
   store.setSessionState('s-fail', { activeProjectId: pid });
@@ -271,7 +272,10 @@ test('extraction：LLM 失败时降级——不写记忆，只记程序侧工作
   await controller.drain();
   assert.equal(store.listMemories({ limit: 10 }).length, 0);
   assert.equal(listJournal(store, { projectId: pid }).length, 1, '应有程序侧兜底工作日志');
-  assert.equal(store.isTurnExtracted('s-fail', 1), true);
+  assert.equal(store.isTurnExtracted('s-fail', 1), false, '失败回合不能标已抽取，否则会变成静默黑洞');
+  const lastError = JSON.parse(store.metaGet('extraction.last_error') ?? '{}');
+  assert.equal(lastError.reason, 'timeout');
+  assert.equal(lastError.turn, 1);
   const stats = controller.stats();
   assert.ok(stats.journalFallbacks >= 1);
 });
@@ -307,7 +311,9 @@ test('extraction：模型返回非 JSON 文本时降级，不应抛 ReferenceErr
   const joined = warnings.join('\n');
   assert.ok(!joined.includes('clip is not defined'), `不应再出现 clip 未定义：${joined}`);
   assert.ok(joined.includes('语义抽取失败'), `应记录失败警告：${joined}`);
-  assert.equal(store.isTurnExtracted('s-text', 1), true, '失败回合也必须标记已抽取，避免重复补做');
+  assert.equal(store.isTurnExtracted('s-text', 1), false, '模型返回非 JSON 不能算抽取成功');
+  const lastError = JSON.parse(store.metaGet('extraction.last_error') ?? '{}');
+  assert.equal(lastError.reason, 'invalid-json');
   assert.equal(listJournal(store, { projectId: pid }).length, 1, '降级后仍要留程序侧工作日志');
 });
 
@@ -334,7 +340,7 @@ test('extraction：关闭抽取时不调用模型、不经程序日志', async (
 test('schema：v4 迁移幂等，旧库可打开并带 evidence/journal/judgments 表', (t) => {
   const { store, dir } = makeTempStore(t);
   const version = store.db.prepare('PRAGMA user_version').get();
-  assert.equal(Number(version.user_version), 7);
+  assert.equal(Number(version.user_version), 8);
   const tables = store.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((row) => row.name);
   for (const name of ['memory_evidence', 'project_journal', 'relation_history', 'judgments']) {
     assert.ok(tables.includes(name), `应有 ${name} 表`);
@@ -342,7 +348,7 @@ test('schema：v4 迁移幂等，旧库可打开并带 evidence/journal/judgment
   store.close();
   const reopened = openStore(join(dir, 'soul.db'));
   t.after(() => { try { reopened.close(); } catch { /* closed */ } });
-  assert.equal(Number(reopened.db.prepare('PRAGMA user_version').get().user_version), 7);
+  assert.equal(Number(reopened.db.prepare('PRAGMA user_version').get().user_version), 8);
   reopened.close(); // 先放句柄，makeTempStore 的清理才能删掉目录（Windows）
 });
 
@@ -465,6 +471,178 @@ test('extraction：同一回合重复入队只调用一次模型', async (t) => 
   await controller.drain();
   assert.equal(calls, 1, '同一回合只应抽取一次');
   assert.equal(store.listMemories({ limit: 10 }).length, 1);
+});
+
+test('semantic：反馈规则/原句样本必须带真实证据，落库后规则 active、样本可查', (t) => {
+  const { store } = makeTempStore(t);
+  const turns = [
+    {
+      userText: '以后就照这股劲说，别端着了。',
+      assistantText: '这说法我要了，往后照着来。',
+    },
+  ];
+  const result = validateSemanticResult({
+    styleRules: [{
+      rule: '直白自然接话，不端架子、不套公文腔',
+      scene: 'chat',
+      category: 'flat_tone',
+      evidenceQuote: '以后就照这股劲说',
+      explicit: true,
+    }],
+    styleExamples: [{
+      text: '这说法我要了，往后照着来。',
+      kind: 'positive',
+      scene: 'chat',
+      evidenceQuote: '这说法我要了',
+    }],
+  }, { sessionId: 's-style', turn: 1, turns });
+  assert.equal(result.styleRules.length, 1);
+  assert.equal(result.styleExamples.length, 1);
+  assert.equal(result.rejected.length, 0);
+
+  const stats = applySemanticResult(store, {
+    sessionId: 's-style',
+    turn: 1,
+    result,
+    config: testConfig(),
+  });
+  assert.equal(stats.styleRules, 1);
+  assert.equal(stats.styleExamples, 1);
+  assert.equal(store.styleRuleStats().active, 1);
+  const samples = listStyleExamples(store, { kind: 'positive' });
+  assert.ok(samples.some((row) => row.text.includes('这说法我要了')));
+});
+
+test('semantic：证据句容忍标点/空白差异，不再要求逐字 100% 相同', () => {
+  const quote = findEvidenceQuote(
+    ['代码没 问题，但是这个方案还得再看一眼。'],
+    '代码没问题',
+  );
+  assert.ok(quote, '归一化后应能找到证据句');
+});
+
+test('extraction：/soul reextract 的底层回填会重置标记并重新抽取', async (t) => {
+  const { store } = makeTempStore(t);
+  store.recordTurn({
+    sessionId: 's-re',
+    turn: 1,
+    userText: '记住：回填测试要重新抽取这条。',
+    assistantText: '好。',
+    toolCalls: 0,
+    reason: 'completed',
+  });
+  store.markTurnExtracted('s-re', 1);
+  let calls = 0;
+  const llm = {
+    available: true,
+    callJson: async () => {
+      calls += 1;
+      return { ok: true, json: {} };
+    },
+  };
+  const controller = createExtractionController({
+    store,
+    config: testConfig({ extractDebounceMs: 0, extractMinIntervalMs: 0 }),
+    logger: silentLogger,
+    llm,
+  });
+  t.after(() => controller.dispose());
+  assert.equal(store.isTurnExtracted('s-re', 1), true);
+  assert.equal(controller.reextract({ limit: 5 }), 1);
+  assert.equal(store.isTurnExtracted('s-re', 1), false, '回填应先清掉旧标记');
+  await controller.drain();
+  assert.equal(calls, 1);
+  assert.equal(store.isTurnExtracted('s-re', 1), true, '重新抽取成功后应再标记');
+});
+
+test('semantic：模型给的 evidenceQuote 验真后，可以支撑改写过的 content', () => {
+  const turns = [
+    { userText: '其实我主要还是希望你玩的开心点', assistantText: '好嘛，那我先开一局。' },
+  ];
+  const { memories, rejected } = validateSemanticResult({
+    memories: [
+      {
+        type: 'preference',
+        content: '用户希望助手玩游戏时开心一点，不要只做工程汇报。',
+        evidenceQuote: '其实我主要还是希望你玩的开心点',
+      },
+      {
+        type: 'preference',
+        content: '用户希望助手不要只做工程汇报。',
+        evidenceQuote: '这句原话根本不存在',
+      },
+    ],
+  }, { sessionId: 's-q', turn: 1, turns });
+  assert.equal(memories.length, 1);
+  assert.match(memories[0].quote, /开心/u);
+  assert.equal(rejected.length, 1);
+});
+
+test('semantic：换句话说的同一条记忆合并加权，不再长出新条目', (t) => {
+  const { store } = makeTempStore(t);
+  const first = validateSemanticResult({
+    memories: [{
+      type: 'preference',
+      content: '用户希望助手玩游戏时录屏，并保留思考过程，之后用助手自己的声音配音发视频。',
+      evidenceQuote: '我希望你玩游戏时录屏，保留思考过程，之后用你的声音配音发视频',
+    }],
+  }, {
+    sessionId: 's-dup', turn: 1,
+    turns: [{ userText: '我希望你玩游戏时录屏，保留思考过程，之后用你的声音配音发视频' }],
+  });
+  const one = applySemanticResult(store, { sessionId: 's-dup', turn: 1, result: first, window: { turns: [] }, config: {} });
+  assert.equal(one.created.length, 1);
+  const second = validateSemanticResult({
+    memories: [{
+      type: 'preference',
+      content: '用户希望助手玩游戏时录屏，之后用助手声音配音做成视频发布。',
+      evidenceQuote: '玩游戏记得录屏，之后用你的声音配音做成视频发出去',
+    }],
+  }, {
+    sessionId: 's-dup', turn: 2,
+    turns: [{ userText: '玩游戏记得录屏，之后用你的声音配音做成视频发出去' }],
+  });
+  const two = applySemanticResult(store, { sessionId: 's-dup', turn: 2, result: second, window: { turns: [] }, config: {} });
+  assert.equal(two.created.length, 0);
+  assert.equal(two.reinforced.length, 1);
+  assert.equal(store.memoryCounts().total, 1);
+});
+
+test('extraction：历史回填按目标回合截断窗口，不拿会话最新回合凑数', async (t) => {
+  const { store } = makeTempStore(t);
+  for (let turn = 1; turn <= 3; turn += 1) {
+    store.recordTurn({
+      sessionId: 's-window',
+      turn,
+      userText: `第 ${turn} 轮：这条原始需求要保留下来，用来验证回填窗口边界。`,
+      assistantText: `第 ${turn} 轮回复：收到，按这个方向继续。`,
+      toolCalls: 0,
+      reason: 'completed',
+    });
+    store.markTurnExtracted('s-window', turn);
+  }
+  const prompts = [];
+  const llm = {
+    available: true,
+    callJson: async ({ input }) => {
+      prompts.push(String(input ?? ''));
+      return { ok: true, json: {} };
+    },
+  };
+  const controller = createExtractionController({
+    store,
+    config: testConfig({ extractDebounceMs: 0, extractMinIntervalMs: 0, extractWindowTurns: 3 }),
+    logger: silentLogger,
+    llm,
+  });
+  t.after(() => controller.dispose());
+  assert.equal(controller.reextract({ limit: 3 }), 3);
+  await controller.drain();
+  assert.equal(prompts.length, 3);
+  const oldest = prompts.at(-1);
+  assert.match(oldest, /第 1 轮/u, '回填最老回合时应带上该回合');
+  assert.doesNotMatch(oldest, /第 2 轮/u, '不能把目标回合之后的对话塞进窗口');
+  assert.doesNotMatch(oldest, /第 3 轮/u, '不能拿会话最新回合凑数');
 });
 
 // 放在文件末尾，避免 import 顺序从 join 引入未使用告警时的困惑。

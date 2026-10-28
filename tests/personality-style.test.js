@@ -58,7 +58,7 @@ test('工作请求 / 普通闲聊的意图不被 feedback 抢走', () => {
 test('feedback 回合不注入背景资料（关系/项目/记忆都不塞），只给最小行为提示', () => {
   const store = fakeStore();
   const text = renderContextBlock({ store, config: {}, sessionId: 's', query: FEEDBACK_SENTENCE });
-  assert.ok(text.includes('主人在说你的说话方式本身'));
+  assert.ok(text.includes('前辈在说你的说话方式本身'));
   assert.ok(!text.includes('项目背景'));
   assert.ok(!text.includes('关系背景'));
   assert.ok(!text.includes('可能相关的旧信息'));
@@ -80,14 +80,15 @@ test('提示词写进了行为约束，且没有把用户的例子变成「禁�
   const policy = readPrompt('interaction-policy.md');
   assert.ok(policy.includes('不套固定回复结构'));
   assert.ok(policy.includes('被评价'));
-  assert.ok(policy.includes('被说「测试一下」'));
-  assert.ok(policy.includes('不承诺'));
+  assert.ok(policy.includes('承诺'), '仍应保留对跨会话承诺的约束');
   assert.ok(!policy.includes('「行 / 认 / 陪 / 收到」'));
+  assert.ok(!policy.includes('主人'), 'interaction-policy 不该再出现旧称呼「主人」');
 
   const persona = readPrompt('persona.md');
   assert.ok(persona.includes('小鲸鱼女仆娘'));
-  assert.ok(persona.includes('称呼用「主人」'));
-  assert.ok(persona.includes('不挂「我改」这种保证'));
+  assert.match(persona, /称呼用「(?:前辈|倚圣|主人)」/u);
+  assert.ok(!persona.includes('收下了'), 'persona 不该再写禁用词清单');
+  assert.ok(!persona.includes('我改'), 'persona 不该再写自我保证负例');
 
   const memoryPolicy = readPrompt('memory-policy.md');
   assert.ok(memoryPolicy.includes('工程要求'));

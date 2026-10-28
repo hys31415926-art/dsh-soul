@@ -21,11 +21,11 @@ test('稳定性：连续两轮渲染结果完全相同（不掺轮数/相对时�
   assert.ok(!/聊过 \d+ 轮/.test(first), '注入块不该包含每回合都会变的轮数');
 });
 
-test('画像槽：常驻一小段关于主人的长期信息', (t) => {
+test('画像槽：常驻一小段关于前辈的长期信息', (t) => {
   const { store } = makeTempStore(t);
   seed(store);
   const text = renderContextBlock({ store, config: {}, sessionId: 's-1', query: '在吗' });
-  assert.match(text, /关于主人/);
+  assert.match(text, /关于前辈/);
   assert.match(text, /先看结论/);
 });
 
@@ -33,5 +33,5 @@ test('画像槽：profileInject=false 时不出现', (t) => {
   const { store } = makeTempStore(t);
   seed(store);
   const text = renderContextBlock({ store, config: { profileInject: false }, sessionId: 's-1', query: '在吗' });
-  assert.ok(!/关于主人/.test(text));
+  assert.ok(!/关于前辈/.test(text));
 });

@@ -30,6 +30,19 @@ test('不记录子代理会话与团队转述消息', (t) => {
   assert.equal(store.listMemories().length, 0);
 });
 
+test('QQ 通道：plugin:dsh-onebot 的用户消息也要落 user_text', (t) => {
+  const { store } = makeTempStore(t);
+  const ctx = makeCtx();
+  installHooks(ctx, store, testConfig(), logger);
+  ctx.emit('session/event', makeSession('onebot-1', { origin: 'onebot' }), userMessageEvent(
+    '记住：QQ 通道的用户消息也要算用户本人说的',
+    { kind: 'plugin:dsh-onebot' },
+  ));
+  const rows = store.listMemories();
+  assert.equal(rows.length, 1);
+  assert.match(rows[0].content, /QQ 通道/);
+});
+
 test('纠正：新版本取代旧版本，检索优先返回新版本', (t) => {
   const { store } = makeTempStore(t);
   const ctx = makeCtx();

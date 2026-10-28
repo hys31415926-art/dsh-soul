@@ -11,7 +11,7 @@ import { recordJournal } from '../lib/memory/journal.js';
 
 const logger = { debug() {}, info() {}, warn() {}, error() {} };
 
-function setup(t) {
+function setup(t, extras = {}) {
   const { store } = makeTempStore(t);
   const commands = fakeCommands();
   const ctx = makeCtx({ commands });
@@ -19,7 +19,7 @@ function setup(t) {
   t.after(() => { try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* ignore */ } });
   const paths = { dbPath: 'C:/tmp/soul.db', dataDir: tempDir, logFile: '', skill: join(tempDir, 'SKILL.md') };
   const personaInfo = { sources: [], missing: [] };
-  const dispose = registerCommand(ctx, { store, config: testConfig(), paths, personaInfo, version: '0.1.0', logger });
+  const dispose = registerCommand(ctx, { store, config: testConfig(), paths, personaInfo, version: '0.1.0', logger, ...extras });
   const command = commands.definitions[0];
   const run = (rawInput) => command.handler({ agent: { session: { id: 's-1' } }, rawInput });
   return { store, commands, ctx, paths, dispose, command, run };
@@ -45,6 +45,55 @@ test('status / help / config 返回可用信息', (t) => {
 
   const config = run('config');
   assert.match(config.text, /soul\.db|dbPath|注入/);
+});
+
+test('/soul rules：列表、禁用、回滚；status 暴露真实规则与守卫指标', (t) => {
+  const { run, store } = setup(t);
+  const rule = store.upsertBehaviorRule({
+    rule: '被纠正时直接给修正结果，跳过自我检讨',
+    scene: '',
+    category: 'self_analysis_apology',
+    isExplicit: true,
+    turnId: 1,
+  });
+
+  const list = run('rules active');
+  assert.match(list.text, new RegExp('#' + rule.id));
+  assert.match(list.text, /自我检讨/);
+
+  const disabled = run('rules disable ' + rule.id);
+  assert.match(disabled.text, /停用|禁用/);
+  assert.equal(store.findStyleRule(rule.id).status, 'disabled');
+  assert.doesNotMatch(run('rules active').text, new RegExp('#' + rule.id));
+
+  run('rules promote ' + rule.id);
+  assert.equal(store.findStyleRule(rule.id).status, 'active');
+  const rolled = run('rules rollback ' + rule.id);
+  assert.match(rolled.text, /已回滚/);
+  assert.equal(store.findStyleRule(rule.id).status, 'superseded');
+
+  const status = run('status');
+  assert.match(status.text, /行为规则/);
+  assert.match(status.text, /输出守卫/);
+});
+
+test('/soul reextract：重置最近 N 个回合并交给后台队列', (t) => {
+  let seen = 0;
+  const { run } = setup(t, {
+    extraction: {
+      reextract({ limit }) {
+        seen = limit;
+        return 7;
+      },
+    },
+  });
+  const result = run('reextract 12');
+  assert.equal(result.kind, 'success');
+  assert.equal(seen, 12);
+  assert.match(result.text, /已重置最近 7 个回合/);
+
+  const off = setup(t);
+  assert.match(off.run('reextract').text, /抽取控制器未挂载/);
 });
 
 test('remember → search → forget 闭环（真实读写）', (t) => {

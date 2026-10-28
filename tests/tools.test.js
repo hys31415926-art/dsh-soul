@@ -1,4 +1,4 @@
-/** tools 层：14 个 soul_* 工具真实读写数据库（不经过模型）。 */
+/** tools 层：15 个 soul_* 工具真实读写数据库（不经过模型）。 */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
@@ -18,12 +18,13 @@ function setup(t, memeDb = null) {
   return { store, tools, dispose, get, exec };
 }
 
-test('注册：14 个工具全部注册，且卸载后清空', (t) => {
+test('注册：15 个工具全部注册，且卸载后清空', (t) => {
   const { tools, dispose } = setup(t);
   const names = tools.tools.map((tool) => tool.name).sort();
   assert.deepEqual(names, [
     'soul_episodes', 'soul_forget', 'soul_judge', 'soul_learn', 'soul_meme', 'soul_mood', 'soul_projects',
-    'soul_remember', 'soul_review', 'soul_search', 'soul_self', 'soul_session', 'soul_status', 'soul_task',
+    'soul_remember', 'soul_review', 'soul_search', 'soul_self', 'soul_session', 'soul_status',
+    'soul_style_feedback', 'soul_task',
   ]);
   dispose();
   assert.equal(tools.tools.length, 0);
