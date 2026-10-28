@@ -4,6 +4,8 @@ DSH（DeepSeek Harness）的长期记忆 + 人设插件。合并了早期 dsh-co
 
 常驻但不打扰：人格三份 md 挂载时读一次；每轮注入块 2000 字硬上限；自动抽取只处理用户明确表达的内容；后台整理是纯本地 SQL，不额外调模型。
 
+v1.3.1 修了学习证据链：同一回合不重复扣分；负评只归责真正注入过或文字高度重合的样本，无匹配不扣分；助手自评只提候选，不给自己发认可。`/soul replay` 可回放历史反馈。
+
 v1.2 加了两件让记忆「像真的记得」的事：
 
 - **跨会话接话**：距上一条消息超过 30 分钟，再开口时会把上次最后 3 轮原话接回来（刚聊完不重复，因为那段还在上下文里）。
@@ -43,10 +45,11 @@ v1.2 加了两件让记忆「像真的记得」的事：
 | `soul_judge` | 记一条判断（guess）或标结果（result）；判断不是记忆 |
 | `soul_meme` | 查本地梗库（cnmeme.wiki 快照），「怎么用 / 怎么接」排最前 |
 | `soul_mood` | 看我当前的心情（valence / 原因 / 给 knock 的档位） |
+| `soul_style_feedback` | 显式上报语体反馈：good / bad / rule |
 
 ## 命令（用户可用）
 
-`/soul` 后接：`status`、`memories`、`search`、`remember`、`forget`、`candidates`、`approve`、`reject`、`backup`、`today`、`journal`、`projects`、`project`、`switch`、`add`、`done`、`review`、`mood`、`config`、`export`、`help`。
+`/soul` 后接：`status`、`memories`、`search`、`remember`、`forget`、`candidates`、`approve`、`reject`、`backup`、`today`、`journal`、`projects`、`project`、`switch`、`add`、`done`、`review`、`mood`、`config`、`export`、`rules`、`reextract`、`replay`、`help`。
 
 ## 技能
 

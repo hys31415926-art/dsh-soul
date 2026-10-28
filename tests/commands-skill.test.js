@@ -96,6 +96,21 @@ test('/soul reextract：重置最近 N 个回合并交给后台队列', (t) => {
   assert.match(off.run('reextract').text, /抽取控制器未挂载/);
 });
 
+test('/soul replay：回放历史反馈，重复回放不重复落样本', (t) => {
+  const { run, store } = setup(t);
+  store.recordTurn({ sessionId: 's-1', turn: 1, userText: '随便聊聊', assistantText: '三十来秒，看着像有人在训某个嘴硬的机器喵。', endedAt: Date.now() - 60000 });
+  store.recordTurn({ sessionId: 's-1', turn: 2, userText: '这句好，有内味', assistantText: '那就这么写。', endedAt: Date.now() });
+
+  const first = run('replay 10');
+  assert.equal(first.kind, 'success');
+  assert.match(first.text, /回放 2 个回合/);
+  assert.match(first.text, /夸奖 1/);
+
+  const second = run('replay 10');
+  assert.equal(second.kind, 'success');
+  assert.match(second.text, /样本 0/);
+});
+
 test('remember → search → forget 闭环（真实读写）', (t) => {
   const { run, store } = setup(t);
   const remembered = run('remember 用户喜欢先看结论再听分析');
