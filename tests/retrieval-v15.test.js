@@ -16,7 +16,11 @@ import {
   usageOf,
 } from '../lib/memory/retrieval.js';
 import { attributeSlot } from '../lib/memory/attributes.js';
-import { renderContextBlock, renderInjectedMemories } from '../lib/memory/render.js';
+import {
+  renderContextBlock,
+  renderInjectedMemories,
+  renderStatus,
+} from '../lib/memory/render.js';
 
 const DAY = 86_400_000;
 
@@ -175,4 +179,22 @@ test('注入即观测：渲染后写入 retrieval.last', (t) => {
   const last = String(store.metaGet('retrieval.last') ?? '');
   assert.match(last, /模式 current_message/u);
   assert.match(last, /路径/u);
+});
+
+test('状态可见：/soul status 会显示语义检索是已加载、懒加载还是降级', (t) => {
+  const { store } = makeTempStore(t);
+  const paths = { logFile: 'C:/tmp/soul.log', dataDir: 'C:/tmp' };
+  const base = { store, paths, personaInfo: { sources: [] }, version: '1.5.1' };
+
+  const lazy = renderStatus({ ...base, config: testConfig(), embedding: null });
+  assert.match(lazy, /语义检索：开（模型懒加载，尚未触发/u);
+
+  const ready = renderStatus({ ...base, config: testConfig(), embedding: { ready: true, failed: null, model: 'Xenova/bge-small-zh-v1.5' } });
+  assert.match(ready, /语义检索：开（Xenova\/bge-small-zh-v1\.5 已加载/u);
+
+  const broken = renderStatus({ ...base, config: testConfig(), embedding: { ready: false, failed: 'Could not load the "sharp" module using the win32-x64 runtime', model: 'x' } });
+  assert.match(broken, /语义检索：降级为字面（Could not load/u);
+
+  const off = renderStatus({ ...base, config: testConfig({ embeddingRetrieval: false }), embedding: null });
+  assert.match(off, /语义检索：关（只做字面检索）/u);
 });

@@ -2,6 +2,12 @@
 
 版本号以 `package.json` 为准。这里只记「行为变了」的部分，纯重构不记。
 
+## 1.5.1
+
+- 修掉一个长期静默降级：Windows 上 `sharp` 的预编译二进制坏了（`.node` 加载报 `ERR_DLOPEN_FAILED: The specified module could not be found`），`transformers.js` 一 import 就失败，于是向量模型永远加载不起来、语义检索长期退回字面检索，只在 `soul.log` 里刷一行 warn。`sharp` 现在是显式依赖（`^0.34.5`），README 补了排查与修法。
+- `/soul status` 与 `soul_status` 工具新增一行「语义检索」：已加载 / 懒加载未触发 / 降级（带原因），并给出已建索引条数。降级从此能自己看见，不用翻日志。
+- 实测（本地 bge-small-zh-v1.5，CPU）：首次加载 428ms，512 维；「屋里别太冷」对「空调别开太低」余弦 0.6129，对无关句 0.3185；第二次调用 4ms。
+
 ## 1.5.0
 
 **检索路由**（`lib/memory/retrieval.js` 的 `planRetrieval()`）

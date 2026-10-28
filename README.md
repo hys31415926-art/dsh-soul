@@ -6,10 +6,11 @@ DSH（DeepSeek Harness）的长期记忆 + 人设插件。合并了早期 dsh-co
 
 ## 版本
 
-当前版本 **1.5.0**（以 `package.json` 为准；详细差异见 `docs/CHANGELOG.md`）。
+当前版本 **1.5.1**（以 `package.json` 为准；详细差异见 `docs/CHANGELOG.md`）。
 
 | 版本 | 主要变化 |
 | --- | --- |
+| `1.5.1` | `/soul status` 直接显示语义检索是「已加载 / 懒加载 / 降级（原因）」并给出已建索引条数；`sharp` 改为显式依赖（修掉 `Could not load the "sharp" module` 导致的长期静默降级） |
 | `1.5.0` | 检索路由（默认只按当前消息检索）；单值属性改口 / 多值并存；睡眠维护（近重复合并、低价值聚合、六条护栏）；检索缓存与可观测（`/soul why`、`/soul sleep`） |
 | `1.4.0` | 语义抽取预算与失败退避（不再无限重试）；注入三级分流（可以自然提起／只影响语气／拿不准） |
 | `1.3.1` | 学习证据链：同一回合不重复扣分，负评只归责真正注入过的样本；助手自评只提候选 |
@@ -186,3 +187,22 @@ tests/                node --test
 - `dsh-onebot-qq`：QQ 会话与终端共用 schema；建议它调 `markSession(sessionId, {origin, cwd})`，soul 就能按来源打标签。
 - `dsh-bili-whale`：独立的客户端注入，不争同一块上下文。
 - `billion-context`：压缩会话历史，和 soul 的长期库互补。
+
+## 语义检索装不上时（降级与修复）
+
+向量模型（`bge-small-zh-v1.5`，512 维）是**懒加载**的：装不上就静默退回字面检索，对话不会报错，所以很容易长期不知道自己一直在用字面检索。`/soul status` 现在会直接显示状态：
+
+```
+语义检索：开（Xenova/bge-small-zh-v1.5 已加载，已建索引 177 条）
+语义检索：开（模型懒加载，尚未触发，已建索引 0 条）
+语义检索：降级为字面（Could not load the "sharp" module using the win32-x64 runtime，已建索引 0 条）
+```
+
+Windows 上最常见的原因是 `sharp` 的预编译二进制装坏了：`@img/sharp-win32-x64` 里的 `.node` 加载直接报 `ERR_DLOPEN_FAILED: The specified module could not be found`，而模型文件和 transformers.js 本身都是好的。修法是装一份干净的 `sharp`：
+
+```bash
+npm install sharp --no-audit --no-fund   # 在插件目录里跑，会带上匹配平台的 @img/sharp-win32-x64
+node -e "require('sharp')"               # 不报错即修好
+```
+
+模型文件在 `<dataDir>/models/Xenova/bge-small-zh-v1.5/`（config.json + tokenizer.json + onnx/model.onnx，约 114MB），缺文件时会在有网的情况下自动下载。修好后启动 3 秒会自动回填历史记忆的向量索引（`syncEmbeddings`），不用手动重建。
