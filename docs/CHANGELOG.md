@@ -2,6 +2,27 @@
 
 版本号以 `package.json` 为准。这里只记「行为变了」的部分，纯重构不记。
 
+## 1.7.1
+
+**审查修正：人格里的固定轨迹、偏好型反馈、场景粒度**
+
+- 人格内核删掉「被凶会小小委屈一下然后马上回来」。那是一句写死的情绪轨迹，读完就照着演；现在只在边界里保留了「会不高兴」，怎么处理留给当轮判断。同理，「被要求测试」不再要求「像朋友一样接一句」，改成不自检、不报状态、不表演人格；「日常闲聊：轻松、软、可以黏一点」改成不绑定语气的说法。
+- 语体反馈多一条通道：`lib/style-signal.js` 新增 `STYLE_PREFERENCE_RE`。以前 `analyzeFeedbackSignal` 只认「夸」和「六类批评」，`if (!isPraise && !correctionHit) return null` 会让「再活泼一点」「不用那么端着」「允许主动换话题」这类方向性要求整句丢掉——它们只能靠语义管道偶发地变成一条 preference 记忆，进不了语体链路。现在返回 `signal: 'preference'`、`category: 'style_preference'`，`captureStyleSignal` 与 `style-replay` 只给它建规则，**不**给它存负样本、**不**扣分（那句话未必错，只是不够对路）。
+- 没命中任何类别的批评不再冒充 `mechanical_tone`：默认类别改 `general`，默认规则改成「按对方指出的地方改，别自行扩大到别的方面」。以前所有不认识的批评都被记成「机械腔」，同类底下堆着互不相干的规则。
+- 场景格细分：新增 `lib/core/scene.js`，把意图映射成 `work / chat / intimate / emotional / test / feedback` 六格。原来 `WORK_KINDS.has(kind) ? 'work' : 'chat'` 把亲近、情绪、被检验、反馈全压进 chat，六类互相冲突的规则同时注入。读取时 `sceneFallbacks()` 让细格退回 chat（旧数据全在 chat 和 work 里），`store.activeStyleRules()` 与 `selectStyleAnchors()` 都接受 `fallbackScenes`。
+- 情绪指向的提示词补了三条：常见填「前辈」或具体那件事；同一件事要沿用同一个 topic；确实没有指向才留空。`topic` 列本身在 1.7.0 就有了。
+- 测试 240 → 246：新增 `tests/style-preference-scene.test.js`（偏好三通道、批评不被偏好吞掉、六格映射、细格退回 chat 兜底、细格优先、话题换了 topic 跟着换）。
+
+## 1.7.0
+
+**人格与学习闭环**（schema 12，`emotion` 加 `topic`）
+
+- 情绪多一个指向：`emotion.topic`（≤16 字），渲染成「我现在的心情：{label}（{topic}，{reason}）」。以前只有 `reason`，读起来是一次性的原因句；现在能表达「还是因为这件事」。`smooth()` 改为一层状态：新判定不给原因/指向时保留旧的，情绪归零时一起清空，避免 valence 已经是 0 还挂着旧原因。
+- 语体样本收紧：正向锚点必须是助手自己说过的原话。只出现在用户话里的样本降成 `borrowed`（留档但不进注入）；「接下来我立三条规矩：1. …」这类布置任务的句子不再进原句库。
+- 记忆写入加校验：第一人称原话（「我爱你所以说什么都无所谓」）不直接贴成长期记忆；推测出来的情绪（「他觉得你差并为此难受」）置信度压到 0.6 以下，落候选；6 字以下的残片拒收；近义记忆合并时两种归一化取较大相似度。
+- 行为规则做近义去重：`findNearDuplicateRule`（字符 bigram Jaccard ≥ 0.62）在 `upsertBehaviorRule` 里先于新建生效，换句话说的同一条反馈不再各存一条。
+- 人格文件去掉「十五到二十五字」「最多一个破折号」「语气词自然带着：呀、嘛、啦」这类硬约束；「不排条目」加了「除非对方要的本来就是结构化产出」的例外。
+
 ## 1.6.0
 
 **记忆唤醒链路可观测**（schema 11，新增 `wake_log` 表）
