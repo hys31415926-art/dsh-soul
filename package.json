@@ -1,6 +1,6 @@
 {
   "name": "dsh-soul",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "private": true,
   "description": "DSH 长期记忆与人设插件 soul：跨会话记忆与接话、语义检索（本地向量）、关系连续性、项目/任务档案、稳定人格与本地梗库，常驻但不打扰。；v1.3 情绪状态（判定/平滑/时间演化，给 knock 提供情绪来源）",
   "type": "module",
