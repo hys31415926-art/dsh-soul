@@ -6,6 +6,18 @@ import { installHooks } from '../lib/hooks.js';
 
 const logger = { debug() {}, info() {}, warn() {}, error() {} };
 
+test('emotionJudge=false：不调用 emotion.consider', (t) => {
+  const { store } = makeTempStore(t);
+  const ctx = makeCtx();
+  let called = 0;
+  const dispose = installHooks(ctx, store, testConfig({ emotionJudge: false }), logger, null, null, {
+    consider() { called += 1; },
+  });
+  t.after(dispose);
+  ctx.emit('session/event', makeSession('s-1'), userMessageEvent('今天有点累'));
+  assert.equal(called, 0, '配置关掉后不应再触发情绪判定');
+});
+
 test('user/message：显式记忆落库；重复消息不重复增生', (t) => {
   const { store } = makeTempStore(t);
   const ctx = makeCtx();

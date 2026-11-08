@@ -6,10 +6,11 @@ DSH（DeepSeek Harness）的长期记忆 + 人设插件。合并了早期 dsh-co
 
 ## 版本
 
-当前版本 **1.7.1**（以 `package.json` 为准；详细差异见 `docs/CHANGELOG.md`）。
+当前版本 **1.9.0**（以 `package.json` 为准；详细差异见 `docs/CHANGELOG.md`）。
 
 | 版本 | 主要变化 |
 | --- | --- |
+| `1.9.0` | DSH 0.2.2 适配（技能注册补 `source`）；判断层落地（记忆凭据、项目「在等谁」、prompt 版本提示、`/soul next` 两层裁决、会话订阅项目）；去冗余（schema 17，删 `relation_history` 死表、死方法/死导出、`metrics/style` 链路，evidence 上屏）。含未单独发版的 1.7.2 实测修正 |
 | `1.7.1` | 审查修正：人格里删掉「被凶后马上恢复」的固定轨迹；偏好型反馈（「再活泼一点」）单独成通道，不再被丢掉或误记成批评；场景格从 work/chat 细分为 work/chat/intimate/emotional/test/feedback，旧样本仍由 chat 兜底；情绪指向的提示词补了示例与「沿用同一 topic」的要求 |
 | `1.7.0` | 人格与学习闭环：情绪多一个 `topic`（schema 12，这份心情挂在谁/哪件事上）；语体样本只认助手自己说过的原话（用户话降 `borrowed`、立规矩句不入库）；记忆写入加校验（第一人称原话、推测情绪、6 字残片、近义合并）；行为规则做近义去重；人格文件去掉字数/语气词硬约束 |
 | `1.6.0` | 记忆唤醒链路可观测：每轮落一行 `wake_log`（只存 ID/原因码/长度/预算，不存正文）；淘汰原因可查到具体 ID；`/soul diagnose`、`/soul plan`、`/soul check`；`/soul why` 只答历史 |
@@ -66,7 +67,17 @@ v1.2 加了两件让记忆「像真的记得」的事：
 
 ## 命令（用户可用）
 
-`/soul` 后接：`status`、`memories`、`search`、`remember`、`forget`、`candidates`、`approve`、`reject`、`backup`、`today`、`journal`、`projects`、`project`、`switch`、`add`、`done`、`review`、`mood`、`config`、`export`、`rules`、`reextract`、`replay`、`sleep`、`why`、`plan`、`diagnose`、`check`、`help`。
+`/soul` 后接：`status`、`memories`、`search`、`remember`、`forget`、`candidates`、`approve`、`reject`、`backup`、`today`、`journal`、`projects`、`project`、`switch`、`add`、`done`、`item`、`next`、`accept`、`subscribe`、`review`、`mood`、`config`、`export`、`rules`、`reextract`、`replay`、`sleep`、`why`、`plan`、`diagnose`、`check`、`help`。
+
+## 判断层（v1.8 → v1.9）
+
+从 `dsh-superagent` 借的是判断层，不是执行机器：
+
+- **记忆带授权凭据**：`memories.mandate` 记下「凭什么写这条」（user-said / rule / extracted、策略版本、来源），`/soul why #id` 能回答依据；旧记忆没有凭据就不编。
+- **项目条目带「在等谁」**：`stage`（person / agent / blocked）与 `report`（progress / waiting / ready / blocked / failed / dropped）；`soul_projects` 的 `waiting`、`item-report` 可直接标。
+- **规则有版本**：`prompts/*.md` 挂载时算 hash，改了会在下一轮注入块里提示一次，不用猜「这版规则到底加载没有」。
+- **`/soul next` 先过闸门再打分**：在等人、卡住、做完的不推；剩下按优先级、挂了多久、有没有验收条件算「该不该推」。`/soul accept observe|auto` 只改「推断出来的事算不算该推」，不会自己去开新活。
+- **会话订阅项目**：`/soul subscribe <项目名>` 之后，这个会话抽取出的记忆自动挂过去；只订阅一个才挂，订阅多个就不挂，宁可空着。
 
 ## 技能
 
@@ -179,6 +190,9 @@ lib/commands/soul.js  /soul 命令
 lib/memory/store.js   SQLite 存储（记忆/项目/任务/关系/会话/日志/向量）
 lib/memory/render.js  注入块与给用户看的文本
 lib/memory/style.js   说话习惯本地统计
+lib/memory/mandate.js 记忆授权凭据（策略版本 / 依据 / 来源）
+lib/core/eval.js      项目条目的两层裁决（gate / assess / rank）
+lib/core/rule-topics.js 行为规则按主题去重
 lib/memory/embed.js   本地向量（懒加载，失败降级）
 lib/memory/vecindex.js 向量索引后台回填
 lib/memory/meme.js    本地梗库查询

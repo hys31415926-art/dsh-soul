@@ -337,19 +337,67 @@ test('extraction：关闭抽取时不调用模型、不经程序日志', async (
   assert.equal(store.listMemories({ limit: 10 }).length, 0);
 });
 
-test('schema：v4 迁移幂等，旧库可打开并带 evidence/journal/judgments 表', (t) => {
+test('schema：v17 迁移幂等，新库带 evidence/journal/judgments 表且没有 relation_history', (t) => {
   const { store, dir } = makeTempStore(t);
   const version = store.db.prepare('PRAGMA user_version').get();
   assert.equal(Number(version.user_version), SCHEMA_VERSION);
   const tables = store.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((row) => row.name);
-  for (const name of ['memory_evidence', 'project_journal', 'relation_history', 'judgments']) {
+  for (const name of ['memory_evidence', 'project_journal', 'judgments']) {
     assert.ok(tables.includes(name), `应有 ${name} 表`);
   }
+  assert.ok(!tables.includes('relation_history'), 'v17 起新库不再建 relation_history 死表');
+  const indexes = store.db.prepare("SELECT name FROM sqlite_master WHERE type='index'").all().map((row) => row.name);
+  assert.ok(!indexes.includes('relation_history_time'), 'v17 起不再建 relation_history_time 索引');
   store.close();
   const reopened = openStore(join(dir, 'soul.db'));
   t.after(() => { try { reopened.close(); } catch { /* closed */ } });
   assert.equal(Number(reopened.db.prepare('PRAGMA user_version').get().user_version), SCHEMA_VERSION);
   reopened.close(); // 先放句柄，makeTempStore 的清理才能删掉目录（Windows）
+});
+
+test('schema：v17 迁移会删掉旧库里的 relation_history 表', (t) => {
+  const { store, dir } = makeTempStore(t);
+  store.db.exec(`CREATE TABLE IF NOT EXISTS relation_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    field TEXT NOT NULL,
+    old_value TEXT NOT NULL DEFAULT '',
+    new_value TEXT NOT NULL DEFAULT '',
+    session_id TEXT NOT NULL DEFAULT '',
+    turn INTEGER,
+    reason TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS relation_history_time ON relation_history(created_at DESC);
+  PRAGMA user_version = 16;`);
+  store.close();
+  const reopened = openStore(join(dir, 'soul.db'));
+  try {
+    const tables = reopened.db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all().map((row) => row.name);
+    assert.ok(!tables.includes('relation_history'), 'v17 迁移应 DROP 掉 relation_history');
+    const indexes = reopened.db.prepare("SELECT name FROM sqlite_master WHERE type='index'").all().map((row) => row.name);
+    assert.ok(!indexes.includes('relation_history_time'), 'v17 迁移应 DROP 掉 relation_history_time');
+    assert.equal(Number(reopened.db.prepare('PRAGMA user_version').get().user_version), SCHEMA_VERSION);
+  } finally {
+    reopened.close();
+  }
+});
+
+test('curate：清理超期的记忆历史与证据，并返回条数', (t) => {
+  const { store } = makeTempStore(t);
+  const memory = remember(store, '这是一条会被整理掉的旧历史');
+  const old = Date.now() - 200 * 86_400_000;
+  store.addHistory(memory.id, 'created', null, { content: 'old' }, 'test');
+  // 只老化测试自己新增的这一行；remember 本身写的 created 行保持新鲜，用来验证「旧的清、新的留」。
+  store.db
+    .prepare('UPDATE memory_history SET created_at = ? WHERE id = (SELECT max(id) FROM memory_history WHERE memory_id = ?)')
+    .run(old, memory.id);
+  addEvidence(store, memory.id, [{ sessionId: 's-old', turn: 1, role: 'user', quote: '旧证据' }]);
+  store.db.prepare('UPDATE memory_evidence SET created_at = ? WHERE memory_id = ?').run(old, memory.id);
+  const report = store.curate({ retentionDays: 30 });
+  assert.equal(report.prunedHistory, 1, '超过 180 天的 memory_history 应清掉');
+  assert.equal(report.prunedEvidence, 1, '超过 180 天的 memory_evidence 应清掉');
+  assert.equal(store.memoryHistory(memory.id).length, 1, '新鲜的历史应保留');
+  assert.equal(listEvidence(store, memory.id).length, 0);
 });
 
 // ── v0.6 恢复：进程重启后补做「未抽取回合」 ─────────────────────────

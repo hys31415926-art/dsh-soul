@@ -181,6 +181,11 @@ test('skill：读取 SKILL.md 并注册 soul-workflow', (t) => {
   assert.equal(skills.skills[0].name, 'soul-workflow');
   assert.match(skills.skills[0].content, /先查记忆/);
   assert.deepEqual(skills.skills[0].invocation, { modelInvocable: true, userInvocable: true });
+  // 宿主 dsh-skill 在 get() 时还会跑 validateDefinition：source/provider/content 必须是字符串，
+  // 缺 source 的表现是列表里看得见、skill 工具一加载就报 bindingFailure。
+  assert.equal(typeof skills.skills[0].source, 'string');
+  assert.ok(skills.skills[0].source.length > 0);
+  assert.equal(typeof skills.skills[0].content, 'string');
   dispose();
 
   const empty = fakeSkills();

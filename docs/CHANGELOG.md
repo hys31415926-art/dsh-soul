@@ -2,6 +2,54 @@
 
 版本号以 `package.json` 为准。这里只记「行为变了」的部分，纯重构不记。
 
+## 1.9.0
+
+**DSH 0.2.2 适配 + 判断层落地 + 去冗余**（schema 17）
+
+> 1.7.2 之后有 v1.8（判断层）与 v1.9（双层裁决、会话订阅）两个开发阶段；这次合并为 1.9.0 发布，1.7.2 未单独发版。
+
+### DSH 0.2.2 适配
+
+- 修技能加载失败：宿主的 `skills.register()` 只做宽松校验，`skill` 工具真正 `get()` 时才要求 `source` 是非空字符串。缺了就会「列表里看得见、一加载报 `loaded skill "soul-workflow" source must be a string`」。注册对象补 `source: 'dsh-soul'`，并把这条约束写进测试；已在 0.2.2 运行进程里实际加载通过。
+- 对照 0.2.1 / 0.2.2 的 `dsh-skill`、`dsh-commands`、`dsh-system-prompt`、`dsh-tools`、`dsh-llm`、`dsh-agent`、`dsh-session`：soul 用到的 `ctx.get/on`、system prompt 段落、tools/commands/skills 注册接口都没变；0.2.2 新增的实验包与 soul 无关，没有跟进。
+
+### 判断层（v1.8）
+
+- 记忆带授权凭据：`memories.mandate` 记「凭什么写这条」（explicit / inferred、依据、策略版本、来源），`/soul why #id` 与 `/soul diagnose memory:#id` 能回答。旧记忆没有凭据就留空，不按 `source` 反推——猜出来的凭据比没有更糟。
+- 项目条目带「在等谁」：`project_items.stage`（person / agent / blocked）与 `report`（progress / waiting / ready / blocked / failed / dropped）；`soul_projects` 的 `waiting`、`item-report` 可直接标，项目条目不再只有「open/done」。
+- 规则有版本：`prompts/*.md` 挂载时算 hash，改了会在下一轮注入块里提示一次（`trackPromptVersions` / `takePromptNotice`），不用猜「这版规则到底加载没有」。
+- 明确没搬：Ticket / Assignment / Executor、跨 Source 身份映射、外部事件自动接单；soul 没有执行器，也不打算有。
+
+### 双层裁决与会话订阅（v1.9）
+
+- 新增 `lib/core/eval.js`：`gateItem`（确定性准入：在等人、卡住、做完、没标的先拦）/ `assessItem`（优先级、挂了多久、有没有验收条件打分）/ `evaluateItem` / `rankItems`。决策五态 `accept / observe / wait / ignore / unavailable`，判据是代码里的短语，不是模型自述。
+- `/soul next` 改为先过闸门再排序，每条带一行「判据」（如「优先级 2、挂了 3 天」）。
+- `/soul accept observe|auto`：只改 `/soul next` 的排序与标注——`observe` 把推断出来的事单独列「本来会做」，`auto` 让高分的进「该推的」；**不会自己开新活**。命令文案与 `/soul next` 页脚同步说清楚。
+- 会话订阅项目：`session_subscriptions(session_id, project_id, created_at)`。只订阅一个项目时，抽取出的记忆没带 `projectId` 就自动挂过去；订阅 0 个或 2 个以上都不挂，多个订阅靠猜只会挂错。`/soul subscribe` 查看，`/soul subscribe <项目名>` 订上，`/soul subscribe off` 全清。
+
+### 去冗余（schema 17）
+
+- 删 `relation_history` 死表：建表起就没有读写方；BASE_SCHEMA 不再建，v17 迁移 `DROP INDEX IF EXISTS relation_history_time; DROP TABLE IF EXISTS relation_history`，旧库升级前照常备份。
+- 删 9 个零调用 Store 方法与 5 个随之无用的 prepared statement；删 13 个零引用导出；删两个死配置键 `enhancedExtraction`、`sensitivePolicy`。
+- `emotionJudge` 从「只显示不生效」改成真正能关：`config.emotionJudge === false` 时不再调用 `emotion.consider`。
+- evidence 从只写不读变成能上屏：`/soul why #id`、`/soul diagnose memory:#id` 显示最近一条证据原文与时间；curate 改调 `pruneEvidence`，保留期口径不变（至少 180 天）；`memory_history` 增加 180 天清理，不再只增不减。
+- 删 `metrics/style` JSONL 整条链（采集模块、hooks 记录、配置键、测试）；这类只写不读的指标文件不再占盘。
+- `Config` schema 与 `DEFAULT_CONFIG` 对齐到 62 键、默认值全等：补上 7 个代码在读但用户配不到的键，补上 3 个语义检索默认值，新增 `tests/config-alignment.test.js` 锁死。
+- `/soul help` 的 `input.hint` 补全为实际注册的 35 个子命令，不再漏 today / journal / mood / rules / replay / sleep / next / accept / subscribe / item。
+- 测试 253 → 280：新增 v17 迁移（新库无表、旧库删表）、`emotionJudge:false`、why/diagnose 证据展示、curate 历史/证据清理、配置对齐；删掉只测 metrics/style 的 `tests/style-metrics.test.js`。
+
+## 1.7.2
+
+**实测修正：被比较与斗嘴的意图、规则按主题去重、情绪指向的本地兜底**
+
+- 补两个意图：`lib/core/conversation-policy.js` 新增 `COMPARISON_RE`（「你看看人家」「你就是不如它」「比人家差」）与 `TEASE_RE`（「笨蛋」「真菜」「就这」「你行不行」），分别产出 `comparison` 与 `tease`。原来这两个一个是闲聊一个是情绪，都被压成 `casual`/`chat`，被比较时可能按轻松接一句，斗嘴时反而调出情绪规则。`scene.js` 里比较落 `emotional`（别按轻松接），斗嘴落 `chat`（就是闲聊，不单开格，免得旧样本兜不住）。
+- `EMOTION_RE` 的「不开心」放宽成「不(开心|高兴|爽)」：原来「我真的有点不高兴」识别不到，因为正则写死了「不开心」三个字。
+- 规则注入改按**主题**去重，不再靠字面相似度：新增 `lib/core/rule-topics.js`，把规则归到 `questioning / catchphrase / mechanical / sweetness / directness / length` 六类，同一类只留 `evidence_count` 最高的一条。真实库里 #34/#35/#39 三条同义规则分属 `flat_tone / general / self_analysis_apology`，字符集 Jaccard 只有 0.2，任何字面阈值都合并不了，调阈值只会误伤。现在取 6 条 → 去重 → 切 3 条，注入不再出现三条说同一件事。
+- 情绪指向加本地兜底：`lib/emotion.js` 新增 `topicFromText()`，模型没给 topic 且情绪强度 `>= 0.12` 时，从原话里取最长实词段（≤12 字）顶上；取不到就空着，不编。原来 topic 完全依赖模型返回值，实测真实库里一直是空串，等于这个字段白加。
+- 修一个**新装用户才会踩的 bug**：`store.js` 的迁移只在 `user_version > 0` 时跑，而 `BASE_SCHEMA` 的 `emotion` 建表没有 `topic` 列，所以全新库第一次写情绪直接 `ERR_SQLITE_ERROR: table emotion has no column named topic`。建表语句补上 `topic`，并新增 `ensureEmotionColumns()` 做缺列兜底。
+- 测试 246 → 253：新增 `tests/scene-intent-rules-topic.test.js`（斗嘴/比较分类、场景映射、主题归类、注入去重、本地兜底 topic、撞车只说一次）。
+- 互动节奏补丁 v1：只动 `prompts/interaction-policy.md` 三处——「每轮先选一个主要目的」整节换成「接话与对话节奏」（先接住眼前最明确的互动，不再先归类再组织一条最合适的回复；允许短答、允许说完就停、不硬凑第二个动作、不刻意表演随性）；场景里的「日常闲聊」改成从眼前正在发生的事接话并补上版权边界；「回应前的轻量判断」收窄成「复杂情况才做轻量判断」，普通寒暄不再走五连问。`work-policy.md`、工具执行、备份、测试、回滚与汇报要求一律不动。人格注入从 3727 → 4147 字符，仍在 6000 预算内。新增 `tests/interaction-rhythm.test.js`（6 项）锁住这三处替换与工作态约束。行为前后对照需重启 DSH 后执行，见 `reports/interaction-rhythm-v1-acceptance.md`。
+
 ## 1.7.1
 
 **审查修正：人格里的固定轨迹、偏好型反馈、场景粒度**

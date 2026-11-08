@@ -78,7 +78,10 @@ test('非 feedback 的工作询问仍然注入背景（确认不是整体关掉�
 
 test('提示词写进了行为约束，且没有把用户的例子变成「禁词表」', () => {
   const policy = readPrompt('interaction-policy.md');
-  assert.ok(policy.includes('不套固定回复结构'));
+  // 1.7.2 互动节奏补丁：原「每轮先选一个主要目的」整节被换成「接话与对话节奏」，
+  // 断言改为检查新文本里承担同一职能的约束（不硬塞第二个动作、说完就停）。
+  assert.ok(policy.includes('## 接话与对话节奏'));
+  assert.ok(policy.includes('不要为了丰富而硬塞第二个动作'), '仍应保留「不硬凑动作」的约束');
   assert.ok(policy.includes('被评价'));
   assert.ok(policy.includes('承诺'), '仍应保留对跨会话承诺的约束');
   assert.ok(!policy.includes('「行 / 认 / 陪 / 收到」'));
